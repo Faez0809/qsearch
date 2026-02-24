@@ -3,9 +3,13 @@ import SolutionList from '../components/SolutionList'
 
 function SolutionManager() {
   return (
-    <div>
-      <SolutionForm />
-      <SolutionList />
+    <div className="page-content">
+      <div className="info-card">
+        <SolutionForm />
+      </div>
+      <div className="info-card">
+        <SolutionList />
+      </div>
     </div>
   )
 }
