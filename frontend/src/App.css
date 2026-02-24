@@ -70,15 +70,130 @@ body {
   padding: 24px;
 }
 
-.page-content {
+.dashboard-layout {
   display: grid;
-  gap: 16px;
+  gap: 20px;
 }
 
-.info-card {
-  background-color: #f8fafc;
-  border: 1px solid #e2e8f0;
+.dashboard-panel {
+  background-color: #ffffff;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.06);
+  padding: 20px;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.dashboard-search {
+  display: grid;
+  gap: 14px;
+}
+
+.search-textarea,
+.file-upload-field input {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: inherit;
+  color: #111827;
+  background-color: #ffffff;
+}
+
+.search-textarea {
+  resize: vertical;
+}
+
+.file-upload-field {
+  display: grid;
+  gap: 8px;
+  font-size: 0.9rem;
+  color: #374151;
+}
+
+.primary-action-button,
+.secondary-action-button {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary-action-button {
+  background-color: #2563eb;
+  color: #ffffff;
+  justify-self: start;
+}
+
+.primary-action-button:hover {
+  background-color: #1d4ed8;
+}
+
+.secondary-action-button {
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  border-color: #bfdbfe;
+}
+
+.results-stack {
+  margin-top: 16px;
+  display: grid;
+  gap: 14px;
+}
+
+.result-card {
+  background-color: #ffffff;
   border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
   padding: 16px;
-  text-align: left;
+  display: grid;
+  gap: 12px;
+}
+
+.result-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.result-question {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.match-badge {
+  background-color: #dbeafe;
+  color: #1d4ed8;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.result-image-placeholder {
+  min-height: 120px;
+  border-radius: 8px;
+  border: 1px dashed #cbd5e1;
+  background-color: #f8fafc;
+  display: grid;
+  place-items: center;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.result-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
 }
