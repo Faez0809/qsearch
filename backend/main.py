@@ -75,6 +75,37 @@ def generate_embedding(text: str) -> list[float]:
     return model.encode(text).tolist()
 
 
+def tokenize_text(text: str) -> set[str]:
+    return {
+        token
+        for token in text.lower().split()
+        if len(token) >= 2
+    }
+
+
+def extract_numbers(text: str) -> set[str]:
+    return set(re.findall(r"\d+", text))
+
+
+def calculate_keyword_score(query: str, document_text: str) -> float:
+    query_tokens = tokenize_text(query)
+    if not query_tokens:
+        return 0.0
+
+    document_tokens = tokenize_text(document_text)
+    overlap_count = len(query_tokens & document_tokens)
+    keyword_score = overlap_count / len(query_tokens)
+
+    query_numbers = extract_numbers(query)
+    if query_numbers:
+        document_numbers = extract_numbers(document_text)
+        matching_numbers = query_numbers & document_numbers
+        if matching_numbers:
+            keyword_score += 0.1 * (len(matching_numbers) / len(query_numbers))
+
+    return min(keyword_score, 1.0)
+
+
 def save_embedding_cache() -> None:
     with open(CACHE_FILE, "wb") as cache_file:
         pickle.dump({"media_index": media_index}, cache_file)
@@ -189,13 +220,17 @@ def search_solutions(payload: SearchRequest) -> List[SearchResult]:
         if not item_embedding:
             continue
 
-        similarity = cosine_similarity([query_embedding], [item_embedding])[0][0]
+        cosine_score = float(cosine_similarity([query_embedding], [item_embedding])[0][0])
+        document_text = str(item.get("text") or item.get("base_name") or "")
+        keyword_score = calculate_keyword_score(payload.query, document_text)
+        final_score = 0.5 * cosine_score + 0.5 * keyword_score
+
         scored_results.append(
             SearchResult(
-                text=str(item.get("text") or item.get("base_name") or ""),
+                text=document_text,
                 image_path=item.get("image_path"),
                 audio_path=item.get("audio_path"),
-                similarity=round(float(similarity) * 100, 1),
+                similarity=round(final_score * 100, 1),
             )
         )
 
