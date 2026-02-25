@@ -1,14 +1,20 @@
 import os
+import pickle
+import re
 from typing import List
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from sentence_transformers import SentenceTransformer
+from sklearn.metrics.pairwise import cosine_similarity
 
 from routes.health import router as health_router
 
 IMAGE_DIR = "../QnA"
 AUDIO_DIR = "../Udvash"
+CACHE_FILE = "embeddings_cache.pkl"
+EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 app = FastAPI()
 
@@ -36,10 +42,64 @@ class SearchRequest(BaseModel):
     query: str
 
 
+class SearchResult(BaseModel):
+    text: str
+    image_path: str | None
+    audio_path: str | None
+    similarity: float
+
+
 solutions: List[Solution] = []
 next_solution_id = 1
-media_index: list[dict[str, str | None]] = []
+media_index: list[dict[str, str | list[float] | None]] = []
 indexed_basenames: set[str] = set()
+embedding_model: SentenceTransformer | None = None
+
+
+def clean_filename_text(text: str) -> str:
+    cleaned = re.sub(r"[_\-]+", " ", text)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned or text
+
+
+def get_embedding_model() -> SentenceTransformer:
+    global embedding_model
+
+    if embedding_model is None:
+        embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+    return embedding_model
+
+
+def generate_embedding(text: str) -> list[float]:
+    model = get_embedding_model()
+    return model.encode(text).tolist()
+
+
+def save_embedding_cache() -> None:
+    with open(CACHE_FILE, "wb") as cache_file:
+        pickle.dump({"media_index": media_index}, cache_file)
+
+
+def load_embedding_cache() -> bool:
+    global media_index, indexed_basenames
+
+    if not os.path.exists(CACHE_FILE):
+        return False
+
+    with open(CACHE_FILE, "rb") as cache_file:
+        cache_data = pickle.load(cache_file)
+
+    cached_media_index = cache_data.get("media_index", [])
+    if not isinstance(cached_media_index, list):
+        return False
+
+    media_index = cached_media_index
+    indexed_basenames = {
+        item["base_name"]
+        for item in media_index
+        if isinstance(item, dict) and item.get("base_name")
+    }
+    return True
 
 
 def scan_media_folders() -> int:
@@ -72,8 +132,10 @@ def scan_media_folders() -> int:
         media_index.append(
             {
                 "base_name": base_name,
+                "text": clean_filename_text(base_name),
                 "image_path": image_files_by_base.get(base_name),
                 "audio_path": audio_files_by_base.get(base_name),
+                "embedding": generate_embedding(clean_filename_text(base_name)),
             }
         )
         indexed_basenames.add(base_name)
@@ -84,7 +146,14 @@ def scan_media_folders() -> int:
 
 @app.on_event("startup")
 def startup_event() -> None:
-    scan_media_folders()
+    get_embedding_model()
+
+    cache_loaded = load_embedding_cache()
+    new_items_added = scan_media_folders()
+
+    if (not cache_loaded) or new_items_added:
+        save_embedding_cache()
+
     print(f"Total indexed media items: {len(media_index)}")
 
 
@@ -107,15 +176,38 @@ def create_solution(payload: SolutionCreate) -> Solution:
     return solution
 
 
-@app.post("/search", response_model=List[Solution])
-def search_solutions(payload: SearchRequest) -> List[Solution]:
-    query = payload.query.lower()
-    return [solution for solution in solutions if query in solution.question.lower()]
+@app.post("/search", response_model=List[SearchResult])
+def search_solutions(payload: SearchRequest) -> List[SearchResult]:
+    if not media_index:
+        return []
+
+    query_embedding = generate_embedding(payload.query)
+    scored_results: list[SearchResult] = []
+
+    for item in media_index:
+        item_embedding = item.get("embedding")
+        if not item_embedding:
+            continue
+
+        similarity = cosine_similarity([query_embedding], [item_embedding])[0][0]
+        scored_results.append(
+            SearchResult(
+                text=str(item.get("text") or item.get("base_name") or ""),
+                image_path=item.get("image_path"),
+                audio_path=item.get("audio_path"),
+                similarity=round(float(similarity) * 100, 1),
+            )
+        )
+
+    scored_results.sort(key=lambda result: result.similarity, reverse=True)
+    return scored_results[:3]
 
 
 @app.post("/update-index")
 def update_index() -> dict[str, int]:
     new_items_added = scan_media_folders()
+    if new_items_added:
+        save_embedding_cache()
     return {"new_items_added": new_items_added}
 
 
