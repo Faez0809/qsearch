@@ -25,10 +25,29 @@ function Dashboard() {
   const [isLoading, setIsLoading] = useState(false)
   const [validationMessage, setValidationMessage] = useState('')
   const [results, setResults] = useState([])
+  const [backendStatus, setBackendStatus] = useState('checking')
   const loadingTimeoutRef = useRef(null)
 
   useEffect(() => {
+    const abortController = new AbortController()
+
+    const checkBackendHealth = async () => {
+      try {
+        await fetch('http://127.0.0.1:8000/health', {
+          signal: abortController.signal,
+        })
+
+        setBackendStatus('connected')
+      } catch {
+        setBackendStatus('offline')
+      }
+    }
+
+    checkBackendHealth()
+
     return () => {
+      abortController.abort()
+
       if (loadingTimeoutRef.current) {
         clearTimeout(loadingTimeoutRef.current)
       }
@@ -55,6 +74,14 @@ function Dashboard() {
   return (
     <div className="dashboard-layout">
       <div className="dashboard-panel">
+        <p className="backend-status-message status-message-fade-in" role="status" aria-live="polite">
+          {backendStatus === 'checking'
+            ? 'Checking backend connection...'
+            : backendStatus === 'connected'
+              ? 'Backend Connected ✅'
+              : 'Backend Offline ❌'}
+        </p>
+
         <SearchBox
           query={query}
           onQueryChange={setQuery}
