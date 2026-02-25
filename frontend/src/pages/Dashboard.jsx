@@ -1,24 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import SearchBox from '../components/SearchBox'
-import ResultCard from '../components/ResultCard'
-
-const mockResults = [
-  {
-    id: 'result-1',
-    question: 'Find the derivative of f(x) = x^3 + 4x with step-by-step explanation.',
-    match: 96,
-  },
-  {
-    id: 'result-2',
-    question: 'Which theorem helps prove triangle congruency with two sides and included angle?',
-    match: 89,
-  },
-  {
-    id: 'result-3',
-    question: 'Summarize the causes and effects of the Industrial Revolution in Europe.',
-    match: 84,
-  },
-]
+import SolutionList from '../components/SolutionList'
 
 function Dashboard() {
   const [query, setQuery] = useState('')
@@ -26,7 +8,6 @@ function Dashboard() {
   const [validationMessage, setValidationMessage] = useState('')
   const [results, setResults] = useState([])
   const [backendStatus, setBackendStatus] = useState('checking')
-  const loadingTimeoutRef = useRef(null)
 
   useEffect(() => {
     const abortController = new AbortController()
@@ -47,15 +28,13 @@ function Dashboard() {
 
     return () => {
       abortController.abort()
-
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current)
-      }
     }
   }, [])
 
-  const handleSearch = () => {
-    if (!query.trim()) {
+  const handleSearch = async () => {
+    const trimmedQuery = query.trim()
+
+    if (!trimmedQuery) {
       setValidationMessage('Please enter a question before searching.')
       setResults([])
       return
@@ -63,12 +42,28 @@ function Dashboard() {
 
     setValidationMessage('')
     setIsLoading(true)
-    setResults([])
 
-    loadingTimeoutRef.current = setTimeout(() => {
-      setResults(mockResults)
+    try {
+      const response = await fetch('http://127.0.0.1:8000/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: trimmedQuery }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Search request failed')
+      }
+
+      const data = await response.json()
+      setResults(data)
+    } catch {
+      setValidationMessage('Unable to search right now. Please try again.')
+      setResults([])
+    } finally {
       setIsLoading(false)
-    }, 1200)
+    }
   }
 
   return (
@@ -98,15 +93,11 @@ function Dashboard() {
             <span className="loading-spinner loading-spinner-large" aria-hidden="true" />
             <span>Searching for matching solutions...</span>
           </div>
-        ) : null}
-
-        {!isLoading && results.length > 0 ? (
-          <div className="results-stack results-stack-animated">
-            {results.map((result) => (
-              <ResultCard key={result.id} result={result} />
-            ))}
+        ) : (
+          <div className="results-stack">
+            <SolutionList solutions={results} />
           </div>
-        ) : null}
+        )}
       </div>
     </div>
   )

@@ -275,6 +275,36 @@
   gap: 10px;
 }
 
+
+.solution-list {
+  margin-top: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.solution-item {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.solution-question {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.solution-answer {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.empty-state-message {
+  margin-top: 16px;
+  color: var(--text-secondary);
+}
+
 .app-footer {
   margin-top: 36px;
   padding: 28px 16px;
