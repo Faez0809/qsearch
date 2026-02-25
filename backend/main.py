@@ -28,6 +28,10 @@ class Solution(SolutionCreate):
     id: int
 
 
+class SearchRequest(BaseModel):
+    query: str
+
+
 solutions: List[Solution] = []
 next_solution_id = 1
 
@@ -49,6 +53,12 @@ def create_solution(payload: SolutionCreate) -> Solution:
     solutions.append(solution)
     next_solution_id += 1
     return solution
+
+
+@app.post("/search", response_model=List[Solution])
+def search_solutions(payload: SearchRequest) -> List[Solution]:
+    query = payload.query.lower()
+    return [solution for solution in solutions if query in solution.question.lower()]
 
 
 @app.delete("/solutions/{id}")
