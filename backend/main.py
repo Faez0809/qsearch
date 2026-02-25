@@ -64,7 +64,6 @@ def clean_filename_text(text: str) -> str:
 
 def get_embedding_model() -> SentenceTransformer:
     global embedding_model
-
     if embedding_model is None:
         embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
     return embedding_model
@@ -75,10 +74,12 @@ def generate_embedding(text: str) -> list[float]:
     return model.encode(text).tolist()
 
 
+# 🔥 Improved tokenization for math-heavy text
 def tokenize_text(text: str) -> set[str]:
+    normalized_text = re.sub(r"[+\-=^(),]", " ", text.lower())
     return {
         token
-        for token in text.lower().split()
+        for token in normalized_text.split()
         if len(token) >= 2
     }
 
@@ -96,6 +97,7 @@ def calculate_keyword_score(query: str, document_text: str) -> float:
     overlap_count = len(query_tokens & document_tokens)
     keyword_score = overlap_count / len(query_tokens)
 
+    # numeric bonus
     query_numbers = extract_numbers(query)
     if query_numbers:
         document_numbers = extract_numbers(document_text)
@@ -160,13 +162,15 @@ def scan_media_folders() -> int:
         if base_name in indexed_basenames:
             continue
 
+        text = clean_filename_text(base_name)
+
         media_index.append(
             {
                 "base_name": base_name,
-                "text": clean_filename_text(base_name),
+                "text": text,
                 "image_path": image_files_by_base.get(base_name),
                 "audio_path": audio_files_by_base.get(base_name),
-                "embedding": generate_embedding(clean_filename_text(base_name)),
+                "embedding": generate_embedding(text),
             }
         )
         indexed_basenames.add(base_name)
@@ -188,25 +192,6 @@ def startup_event() -> None:
     print(f"Total indexed media items: {len(media_index)}")
 
 
-@app.get("/solutions", response_model=List[Solution])
-def get_solutions() -> List[Solution]:
-    return solutions
-
-
-@app.post("/solutions", response_model=Solution)
-def create_solution(payload: SolutionCreate) -> Solution:
-    global next_solution_id
-
-    solution = Solution(
-        id=next_solution_id,
-        question=payload.question,
-        answer=payload.answer,
-    )
-    solutions.append(solution)
-    next_solution_id += 1
-    return solution
-
-
 @app.post("/search", response_model=List[SearchResult])
 def search_solutions(payload: SearchRequest) -> List[SearchResult]:
     if not media_index:
@@ -220,10 +205,15 @@ def search_solutions(payload: SearchRequest) -> List[SearchResult]:
         if not item_embedding:
             continue
 
-        cosine_score = float(cosine_similarity([query_embedding], [item_embedding])[0][0])
+        cosine_score = float(
+            cosine_similarity([query_embedding], [item_embedding])[0][0]
+        )
+
         document_text = str(item.get("text") or item.get("base_name") or "")
         keyword_score = calculate_keyword_score(payload.query, document_text)
-        final_score = 0.5 * cosine_score + 0.5 * keyword_score
+
+        # 🔥 Updated weighting
+        final_score = 0.3 * cosine_score + 0.7 * keyword_score
 
         scored_results.append(
             SearchResult(
@@ -244,6 +234,25 @@ def update_index() -> dict[str, int]:
     if new_items_added:
         save_embedding_cache()
     return {"new_items_added": new_items_added}
+
+
+@app.get("/solutions", response_model=List[Solution])
+def get_solutions() -> List[Solution]:
+    return solutions
+
+
+@app.post("/solutions", response_model=Solution)
+def create_solution(payload: SolutionCreate) -> Solution:
+    global next_solution_id
+
+    solution = Solution(
+        id=next_solution_id,
+        question=payload.question,
+        answer=payload.answer,
+    )
+    solutions.append(solution)
+    next_solution_id += 1
+    return solution
 
 
 @app.delete("/solutions/{id}")
