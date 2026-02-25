@@ -144,6 +144,16 @@
   resize: vertical;
 }
 
+.search-input {
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  color: var(--text-primary);
+  background-color: var(--card-bg);
+}
+
 .file-upload-field {
   display: grid;
   gap: 8px;
@@ -226,6 +236,9 @@
   padding: 16px;
   display: grid;
   gap: 12px;
+  opacity: 0;
+  transform: translateY(10px);
+  animation: fadeIn 0.4s forwards;
 }
 
 .result-card:hover,
@@ -275,6 +288,46 @@
   gap: 10px;
 }
 
+.result-similarity {
+  margin: 0;
+  font-weight: 600;
+}
+
+.result-image {
+  width: 100%;
+  max-width: 350px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.result-audio {
+  width: 100%;
+  max-width: 350px;
+}
+
+.search-history {
+  margin-top: 16px;
+}
+
+.history-title {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+}
+
+.history-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.history-chip {
+  border: 1px solid var(--border-color);
+  background-color: color-mix(in srgb, var(--primary), transparent 88%);
+  color: var(--text-primary);
+  padding: 6px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+}
 
 .solution-list {
   margin-top: 16px;
@@ -351,6 +404,13 @@
   color: var(--primary);
 }
 
+
+@keyframes fadeIn {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
 
 @keyframes fadeInStatus {
   from {
