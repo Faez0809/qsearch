@@ -5,6 +5,7 @@ import difflib
 from typing import List
 
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
@@ -18,6 +19,9 @@ CACHE_FILE = "embeddings_cache.pkl"
 EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 app = FastAPI()
+
+app.mount("/QnA", StaticFiles(directory="../QnA"), name="QnA")
+app.mount("/Udvash", StaticFiles(directory="../Udvash"), name="Udvash")
 
 app.add_middleware(
     CORSMiddleware,
@@ -275,8 +279,8 @@ def search(payload: SearchRequest):
         results.append(
             SearchResult(
                 text=doc_text,
-                image_path=item["image_path"],
-                audio_path=item["audio_path"],
+                image_path=f"/QnA/{os.path.basename(item['image_path'])}" if item["image_path"] else None,
+                audio_path=f"/Udvash/{os.path.basename(item['audio_path'])}" if item["audio_path"] else None,
                 similarity=round(final * 100, 1),
             )
         )
