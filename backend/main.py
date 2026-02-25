@@ -76,10 +76,9 @@ def generate_embedding(text: str) -> list[float]:
 
 
 def tokenize_text(text: str) -> set[str]:
-    normalized_text = re.sub(r"[+\-=^(),]", " ", text.lower())
     return {
         token
-        for token in normalized_text.split()
+        for token in text.lower().split()
         if len(token) >= 2
     }
 
@@ -224,7 +223,7 @@ def search_solutions(payload: SearchRequest) -> List[SearchResult]:
         cosine_score = float(cosine_similarity([query_embedding], [item_embedding])[0][0])
         document_text = str(item.get("text") or item.get("base_name") or "")
         keyword_score = calculate_keyword_score(payload.query, document_text)
-        final_score = 0.3 * cosine_score + 0.7 * keyword_score
+        final_score = 0.5 * cosine_score + 0.5 * keyword_score
 
         scored_results.append(
             SearchResult(
