@@ -1,3 +1,5 @@
+import React from 'react'
+
 function SolutionList({ solutions = [], onDelete }) {
   if (!solutions.length) {
     return <p className="empty-state-message">No solutions found.</p>

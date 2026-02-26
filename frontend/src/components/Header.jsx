@@ -1,3 +1,5 @@
+import React from 'react'
+
 function Header({ currentPage, onNavigate, theme, onToggleTheme }) {
   return (
     <header className="app-header">

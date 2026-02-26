@@ -1,3 +1,4 @@
+import React from 'react'
 import { useEffect, useState } from 'react'
 import SolutionForm from '../components/SolutionForm'
 import SolutionList from '../components/SolutionList'

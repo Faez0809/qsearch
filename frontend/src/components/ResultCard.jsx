@@ -1,3 +1,5 @@
+import React from 'react'
+
 function ResultCard({ result }) {
   return (
     <article className="result-card">
