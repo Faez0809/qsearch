@@ -98,6 +98,9 @@ class Solution(SolutionIn):
 media_index: list[dict[str, Any]] = []
 indexed_basenames: set[str] = set()
 embedding_model: Any | None = None
+model_ready = False
+model_warmup_started = False
+model_warmup_lock = threading.Lock()
 cache_needs_save = False
 solutions: list[dict[str, Any]] = []
 init_lock = threading.Lock()
@@ -162,7 +165,7 @@ def phrase_bonus(query: str, document: str) -> float:
 
 
 def get_embedding_model() -> Any:
-    global embedding_model
+    global embedding_model, model_ready
     if embedding_model is None:
         from sentence_transformers import SentenceTransformer
 
@@ -171,6 +174,7 @@ def get_embedding_model() -> Any:
             EMBEDDING_MODEL_NAME,
             cache_folder=MODEL_CACHE_DIR,
         )
+    model_ready = True
     return embedding_model
 
 
@@ -400,12 +404,30 @@ def _background_warmup() -> None:
         pass
 
 
+def _background_model_warmup() -> None:
+    try:
+        get_embedding_model()
+        print("Embedding model warmup complete")
+    except Exception as exc:
+        print(f"Embedding model warmup failed: {exc}")
+
+
+def start_model_warmup_once() -> None:
+    global model_warmup_started
+    with model_warmup_lock:
+        if model_warmup_started:
+            return
+        model_warmup_started = True
+        threading.Thread(target=_background_model_warmup, daemon=True).start()
+
+
 @app.on_event("startup")
 def startup() -> None:
     print(f"Starting backend in {DATA_SOURCE} mode")
     print(f"Embedding model: {EMBEDDING_MODEL_NAME}")
     load_solutions()
     threading.Thread(target=_background_warmup, daemon=True).start()
+    start_model_warmup_once()
     print("Application startup complete")
     print("Background warmup started")
 
@@ -440,12 +462,21 @@ def search(payload: SearchRequest) -> list[SearchResult]:
         return []
 
     query = normalize_text(payload.query)
-    query_embedding = generate_embedding(query)
+    query_embedding: list[float] | None = None
+    if model_ready:
+        try:
+            query_embedding = generate_embedding(query)
+        except Exception:
+            query_embedding = None
+    else:
+        start_model_warmup_once()
     results: list[SearchResult] = []
 
     for item in media_index:
         doc_text = item["text"]
-        cosine = float(cosine_sim(query_embedding, item["embedding"]))
+        cosine = 0.0
+        if query_embedding is not None and "embedding" in item:
+            cosine = float(cosine_sim(query_embedding, item["embedding"]))
         fuzzy_score = fuzzy_token_match_score(query, doc_text)
         number_score = numeric_match_bonus(query, doc_text)
         p_bonus = phrase_bonus(query, doc_text)

@@ -13,14 +13,26 @@ const buildUrl = (path) => `${API_BASE}${path.startsWith('/') ? '' : '/'}${path}
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const fetchWithRetry = async (path, options = {}, retries = 4, waitMs = 3000) => {
+  const timeoutMs = options.timeoutMs ?? 25000
+  const requestOptions = { ...options }
+  delete requestOptions.timeoutMs
+
   for (let attempt = 1; attempt <= retries; attempt += 1) {
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
     try {
-      const response = await fetch(buildUrl(path), options)
+      const response = await fetch(buildUrl(path), {
+        ...requestOptions,
+        signal: controller.signal,
+      })
       if (response.ok) {
+        clearTimeout(timeoutId)
         return response
       }
     } catch {
       // Retry on transient network or cold-start issues.
+    } finally {
+      clearTimeout(timeoutId)
     }
     if (attempt < retries) {
       await sleep(waitMs)
@@ -96,6 +108,7 @@ function Dashboard() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ query: trimmedQuery }),
+        timeoutMs: 20000,
       }, 3, 2000)
 
       const data = await response.json()
