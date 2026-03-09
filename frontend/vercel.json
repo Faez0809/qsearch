@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://qsearch-9ejl.onrender.com/$1"
+    }
+  ]
+}
