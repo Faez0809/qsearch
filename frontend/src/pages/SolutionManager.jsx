@@ -3,11 +3,34 @@ import { useEffect, useState } from 'react'
 import SolutionForm from '../components/SolutionForm'
 import SolutionList from '../components/SolutionList'
 
-const API_BASE =
+const PRIMARY_API_BASE =
   import.meta.env.VITE_API_BASE ||
   (import.meta.env.PROD
     ? '/api'
     : 'http://127.0.0.1:8000')
+const RENDER_API_BASE = 'https://qsearch-9ejl.onrender.com'
+const API_BASES = import.meta.env.PROD
+  ? [PRIMARY_API_BASE, RENDER_API_BASE]
+  : [PRIMARY_API_BASE]
+
+const buildUrl = (base, path) =>
+  `${base}${path.startsWith('/') ? '' : '/'}${path}`
+
+const fetchWithFallback = async (path, options) => {
+  const uniqueBases = [...new Set(API_BASES)]
+
+  for (const base of uniqueBases) {
+    try {
+      const response = await fetch(buildUrl(base, path), options)
+      if (response.ok) {
+        return response
+      }
+    } catch {
+      // Try next backend target.
+    }
+  }
+  throw new Error('All backend targets failed')
+}
 
 function SolutionManager() {
   const [solutions, setSolutions] = useState([])
@@ -15,11 +38,7 @@ function SolutionManager() {
   useEffect(() => {
     const fetchSolutions = async () => {
       try {
-        const response = await fetch(`${API_BASE}/solutions`)
-        if (!response.ok) {
-          throw new Error('Failed to fetch solutions')
-        }
-
+        const response = await fetchWithFallback('/solutions')
         const data = await response.json()
         setSolutions(Array.isArray(data) ? data : [])
       } catch (error) {
@@ -32,17 +51,13 @@ function SolutionManager() {
 
   const addSolution = async (newSolution) => {
     try {
-      const response = await fetch(`${API_BASE}/solutions`, {
+      const response = await fetchWithFallback('/solutions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(newSolution),
       })
-
-      if (!response.ok) {
-        throw new Error('Failed to add solution')
-      }
 
       const createdSolution = await response.json()
       setSolutions((previousSolutions) => [...previousSolutions, createdSolution])
@@ -53,13 +68,9 @@ function SolutionManager() {
 
   const deleteSolution = async (id) => {
     try {
-      const response = await fetch(`${API_BASE}/solutions/${id}`, {
+      await fetchWithFallback(`/solutions/${id}`, {
         method: 'DELETE',
       })
-
-      if (!response.ok) {
-        throw new Error('Failed to delete solution')
-      }
 
       setSolutions((previousSolutions) =>
         previousSolutions.filter((solution) => solution.id !== id),

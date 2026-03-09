@@ -3,11 +3,34 @@ import { useEffect, useState } from 'react'
 import SearchBox from '../components/SearchBox'
 import ResultCard from '../components/ResultCard'
 
-const API_BASE =
+const PRIMARY_API_BASE =
   import.meta.env.VITE_API_BASE ||
   (import.meta.env.PROD
     ? '/api'
     : 'http://127.0.0.1:8000')
+const RENDER_API_BASE = 'https://qsearch-9ejl.onrender.com'
+const API_BASES = import.meta.env.PROD
+  ? [PRIMARY_API_BASE, RENDER_API_BASE]
+  : [PRIMARY_API_BASE]
+
+const buildUrl = (base, path) =>
+  `${base}${path.startsWith('/') ? '' : '/'}${path}`
+
+const fetchWithFallback = async (path, options) => {
+  const uniqueBases = [...new Set(API_BASES)]
+
+  for (const base of uniqueBases) {
+    try {
+      const response = await fetch(buildUrl(base, path), options)
+      if (response.ok) {
+        return response
+      }
+    } catch {
+      // Try next backend target.
+    }
+  }
+  throw new Error('All backend targets failed')
+}
 
 function Dashboard() {
   const [query, setQuery] = useState('')
@@ -26,13 +49,9 @@ function Dashboard() {
 
       for (let attempt = 1; attempt <= maxAttempts && keepPolling; attempt += 1) {
         try {
-          const response = await fetch(`${API_BASE}/health`, {
+          const response = await fetchWithFallback('/health', {
             signal: abortController.signal,
           })
-
-          if (!response.ok) {
-            throw new Error('Backend health check failed')
-          }
 
           setBackendStatus('connected')
           return
@@ -75,17 +94,13 @@ function Dashboard() {
     setIsLoading(true)
 
     try {
-      const response = await fetch(`${API_BASE}/search`, {
+      const response = await fetchWithFallback('/search', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ query: trimmedQuery }),
       })
-
-      if (!response.ok) {
-        throw new Error('Search request failed')
-      }
 
       const data = await response.json()
       setResults(Array.isArray(data) ? data : [])
@@ -129,7 +144,7 @@ function Dashboard() {
         ) : (
           <div className="results-stack">
             {results.map((result, index) => (
-              <ResultCard key={`${result.text}-${index}`} result={result} apiBase={API_BASE} />
+              <ResultCard key={`${result.text}-${index}`} result={result} apiBase={PRIMARY_API_BASE} />
             ))}
           </div>
         )}
