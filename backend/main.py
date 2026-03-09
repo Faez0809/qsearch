@@ -26,7 +26,11 @@ AUDIO_DIR = PROJECT_ROOT / "Udvash"
 CACHE_FILE = BASE_DIR / "embeddings_cache.pkl"
 SOLUTIONS_FILE = BASE_DIR / "solutions.json"
 
+# Smaller multilingual model (better for Render free tier)
 EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L6-v2"
+
+# Render-safe cache location
+MODEL_CACHE_DIR = "/tmp/hf_models"
 
 # -----------------------
 # Remote dataset config
@@ -88,7 +92,12 @@ cache_needs_save = False
 solutions: list[dict] = []
 
 
+# -----------------------
+# Text normalization
+# -----------------------
+
 def normalize_text(text: str) -> str:
+
     text = text.lower()
 
     try:
@@ -96,6 +105,7 @@ def normalize_text(text: str) -> str:
         from indic_transliteration.sanscript import transliterate
 
         text = transliterate(text, sanscript.BENGALI, sanscript.ITRANS)
+
     except Exception:
         pass
 
@@ -115,11 +125,18 @@ def normalize_text(text: str) -> str:
 
 
 def tokenize(text: str):
+
     text = normalize_text(text)
+
     return [t for t in text.split() if len(t) >= 2]
 
 
+# -----------------------
+# Matching functions
+# -----------------------
+
 def fuzzy_token_match_score(query: str, document: str) -> float:
+
     query_tokens = tokenize(query)
     doc_tokens = tokenize(document)
 
@@ -129,7 +146,9 @@ def fuzzy_token_match_score(query: str, document: str) -> float:
     matched = 0
 
     for query_token in query_tokens:
+
         for doc_token in doc_tokens:
+
             similarity = difflib.SequenceMatcher(None, query_token, doc_token).ratio()
 
             if similarity >= 0.75:
@@ -140,12 +159,14 @@ def fuzzy_token_match_score(query: str, document: str) -> float:
 
 
 def numeric_match_bonus(query: str, document: str) -> float:
+
     query_nums = set(re.findall(r"\d+", query))
 
     if not query_nums:
         return 0.0
 
     doc_nums = set(re.findall(r"\d+", document))
+
     matched = query_nums & doc_nums
 
     if not matched:
@@ -154,27 +175,42 @@ def numeric_match_bonus(query: str, document: str) -> float:
     return len(matched) / len(query_nums)
 
 
-def phrase_bonus(query: str, document: str) -> float:
+def phrase_bonus(query: str, document: str):
+
     q = normalize_text(query)
     d = normalize_text(document)
 
     return 1.0 if q in d else 0.0
 
 
+# -----------------------
+# Embedding model
+# -----------------------
+
 def get_embedding_model():
+
     global embedding_model
 
     if embedding_model is None:
-        embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+
+        embedding_model = SentenceTransformer(
+            EMBEDDING_MODEL_NAME,
+            cache_folder=MODEL_CACHE_DIR,
+        )
 
     return embedding_model
 
 
 def generate_embedding(text: str):
+
     model = get_embedding_model()
 
     return model.encode(text).tolist()
 
+
+# -----------------------
+# HuggingFace media helpers
+# -----------------------
 
 def build_media_url(folder: str, filename: str):
 
@@ -185,12 +221,16 @@ def build_media_url(folder: str, filename: str):
 
 
 def get_hf_files(folder: str):
-    files: list[str] = []
+
+    files = []
     cursor = None
 
     try:
+
         while True:
+
             params = {"cursor": cursor} if cursor else None
+
             response = requests.get(HF_API_BASE + folder, params=params, timeout=15)
 
             if response.status_code != 200:
@@ -202,46 +242,64 @@ def get_hf_files(folder: str):
                 return files
 
             for item in data:
+
                 if item.get("type") == "file":
                     files.append(item["path"].split("/")[-1])
 
             next_cursor = data[-1].get("oid")
+
             if not next_cursor or next_cursor == cursor:
                 return files
 
             cursor = next_cursor
 
     except Exception:
+
         return files
 
 
+# -----------------------
+# Cache
+# -----------------------
+
 def save_cache():
+
     payload = {"media_index": media_index, "data_source": DATA_SOURCE}
+
     with open(CACHE_FILE, "wb") as file:
+
         pickle.dump(payload, file)
 
 
 def load_cache():
+
     global media_index, indexed_basenames, cache_needs_save
 
     if not CACHE_FILE.exists():
         return False
 
     try:
+
         with open(CACHE_FILE, "rb") as file:
             raw_cache = pickle.load(file)
 
         cache_data_source = None
 
         if isinstance(raw_cache, dict) and "media_index" in raw_cache:
+
             media_index = raw_cache.get("media_index", [])
             cache_data_source = raw_cache.get("data_source")
+
         else:
+
             media_index = raw_cache
 
         indexed_basenames = {
+
             item["base_name"]
+
             for item in media_index
+
             if isinstance(item, dict) and "base_name" in item
         }
 
@@ -257,7 +315,12 @@ def load_cache():
         return False
 
 
+# -----------------------
+# Media scan
+# -----------------------
+
 def scan_media():
+
     global cache_needs_save
 
     image_map = {}
@@ -269,11 +332,15 @@ def scan_media():
         audio_files = get_hf_files("Udvash")
 
         for filename in image_files:
+
             base, _ = os.path.splitext(filename)
+
             image_map[base] = build_media_url("QnA", filename)
 
         for filename in audio_files:
+
             base, _ = os.path.splitext(filename)
+
             audio_map[base] = build_media_url("Udvash", filename)
 
     else:
@@ -285,7 +352,9 @@ def scan_media():
                 path = IMAGE_DIR / filename
 
                 if path.is_file():
+
                     base, _ = os.path.splitext(filename)
+
                     image_map[base] = build_media_url("QnA", filename)
 
         if AUDIO_DIR.is_dir():
@@ -295,33 +364,32 @@ def scan_media():
                 path = AUDIO_DIR / filename
 
                 if path.is_file():
+
                     base, _ = os.path.splitext(filename)
+
                     audio_map[base] = build_media_url("Udvash", filename)
 
     new = 0
 
     all_bases = set(image_map) | set(audio_map)
-    by_base = {item.get("base_name"): item for item in media_index if isinstance(item, dict)}
+
+    by_base = {item.get("base_name"): item for item in media_index}
 
     for base in sorted(all_bases):
+
         text = normalize_text(base)
+
         image_path = image_map.get(base)
         audio_path = audio_map.get(base)
+
         existing = by_base.get(base)
 
         if existing:
-            if existing.get("text") != text:
-                existing["text"] = text
-                cache_needs_save = True
-            if existing.get("image_path") != image_path:
-                existing["image_path"] = image_path
-                cache_needs_save = True
-            if existing.get("audio_path") != audio_path:
-                existing["audio_path"] = audio_path
-                cache_needs_save = True
+
             if "embedding" not in existing:
                 existing["embedding"] = generate_embedding(text)
                 cache_needs_save = True
+
             continue
 
         media_index.append(
@@ -335,42 +403,15 @@ def scan_media():
         )
 
         indexed_basenames.add(base)
-        new += 1
 
-    stale_bases = indexed_basenames - all_bases
-    if stale_bases:
-        media_index[:] = [
-            item for item in media_index if item.get("base_name") not in stale_bases
-        ]
-        indexed_basenames.difference_update(stale_bases)
-        cache_needs_save = True
+        new += 1
 
     return new
 
 
-def save_solutions():
-
-    with open(SOLUTIONS_FILE, "w", encoding="utf-8") as file:
-        json.dump(solutions, file, ensure_ascii=False, indent=2)
-
-
-def load_solutions():
-    global solutions
-
-    if not SOLUTIONS_FILE.exists():
-        solutions = []
-        return
-
-    try:
-
-        with open(SOLUTIONS_FILE, "r", encoding="utf-8") as file:
-            data = json.load(file)
-
-        solutions = data if isinstance(data, list) else []
-
-    except Exception:
-        solutions = []
-
+# -----------------------
+# Startup
+# -----------------------
 
 @app.on_event("startup")
 def startup():
@@ -384,10 +425,15 @@ def startup():
     load_solutions()
 
     if not loaded or new or cache_needs_save:
+
         save_cache()
 
     print("Indexed items:", len(media_index))
 
+
+# -----------------------
+# Search API
+# -----------------------
 
 @app.post("/search", response_model=List[SearchResult])
 def search(payload: SearchRequest):
@@ -435,47 +481,3 @@ def search(payload: SearchRequest):
     results.sort(key=lambda x: x.similarity, reverse=True)
 
     return results[:3]
-
-
-@app.get("/solutions", response_model=List[Solution])
-def get_solutions():
-
-    return solutions
-
-
-@app.post("/solutions", response_model=Solution)
-def create_solution(payload: SolutionIn):
-
-    question = payload.question.strip()
-    answer = payload.answer.strip()
-
-    if not question or not answer:
-        raise HTTPException(status_code=400, detail="Question and answer are required")
-
-    next_id = max((item.get("id", 0) for item in solutions), default=0) + 1
-
-    item = {"id": next_id, "question": question, "answer": answer}
-
-    solutions.append(item)
-
-    save_solutions()
-
-    return item
-
-
-@app.delete("/solutions/{solution_id}")
-def delete_solution(solution_id: int):
-
-    global solutions
-
-    before = len(solutions)
-
-    solutions = [item for item in solutions if item.get("id") != solution_id]
-
-    if len(solutions) == before:
-        raise HTTPException(status_code=404, detail="Solution not found")
-
-    save_solutions()
-
-    return {"ok": True}
-
