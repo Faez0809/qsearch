@@ -3,6 +3,7 @@ import json
 import os
 import pickle
 import re
+import threading
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -83,6 +84,9 @@ indexed_basenames: set[str] = set()
 embedding_model: SentenceTransformer | None = None
 cache_needs_save = False
 solutions: list[dict[str, Any]] = []
+init_lock = threading.Lock()
+is_initialized = False
+init_error: str | None = None
 
 
 def normalize_text(text: str) -> str:
@@ -317,21 +321,49 @@ def load_solutions() -> bool:
         return False
 
 
+def initialize_search_state() -> None:
+    global is_initialized, init_error
+    if is_initialized:
+        return
+
+    with init_lock:
+        if is_initialized:
+            return
+
+        try:
+            get_embedding_model()
+            loaded_cache = load_cache()
+            new_items = scan_media()
+            load_solutions()
+
+            if not loaded_cache or new_items > 0 or cache_needs_save:
+                save_cache()
+
+            is_initialized = True
+            init_error = None
+            print(f"Initialization complete. Indexed items: {len(media_index)}")
+        except Exception as exc:
+            init_error = str(exc)
+            print(f"Initialization failed: {init_error}")
+            raise
+
+
+def _background_warmup() -> None:
+    try:
+        initialize_search_state()
+    except Exception:
+        # Keep server alive; /search will return explicit error until warmup succeeds.
+        pass
+
+
 @app.on_event("startup")
 def startup() -> None:
     print(f"Starting backend in {DATA_SOURCE} mode")
     print(f"Embedding model: {EMBEDDING_MODEL_NAME}")
-
-    get_embedding_model()
-    loaded_cache = load_cache()
-    new_items = scan_media()
     load_solutions()
-
-    if not loaded_cache or new_items > 0 or cache_needs_save:
-        save_cache()
-
+    threading.Thread(target=_background_warmup, daemon=True).start()
     print("Application startup complete")
-    print(f"Indexed items: {len(media_index)}")
+    print("Background warmup started")
 
 
 @app.get("/")
@@ -339,8 +371,27 @@ def root() -> dict[str, str]:
     return {"status": "ok", "message": f"qsearch backend running ({DATA_SOURCE} mode)"}
 
 
+@app.get("/ready")
+def ready() -> dict[str, Any]:
+    return {
+        "ready": is_initialized,
+        "error": init_error,
+        "indexed_items": len(media_index),
+        "mode": DATA_SOURCE,
+    }
+
+
 @app.post("/search", response_model=list[SearchResult])
 def search(payload: SearchRequest) -> list[SearchResult]:
+    if not is_initialized:
+        try:
+            initialize_search_state()
+        except Exception:
+            raise HTTPException(
+                status_code=503,
+                detail="Search is initializing. Please try again in a few seconds.",
+            )
+
     if not media_index:
         return []
 
