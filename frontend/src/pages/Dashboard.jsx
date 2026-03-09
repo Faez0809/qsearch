@@ -16,18 +16,27 @@ function Dashboard() {
     const abortController = new AbortController()
 
     const checkBackendHealth = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/health`, {
-          signal: abortController.signal,
-        })
+      const maxAttempts = 4
 
-        if (!response.ok) {
-          throw new Error('Backend health check failed')
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        try {
+          const response = await fetch(`${API_BASE}/health`, {
+            signal: abortController.signal,
+          })
+
+          if (!response.ok) {
+            throw new Error('Backend health check failed')
+          }
+
+          setBackendStatus('connected')
+          return
+        } catch {
+          if (attempt === maxAttempts) {
+            setBackendStatus('offline')
+            return
+          }
+          await new Promise((resolve) => setTimeout(resolve, 2000))
         }
-
-        setBackendStatus('connected')
-      } catch {
-        setBackendStatus('offline')
       }
     }
 

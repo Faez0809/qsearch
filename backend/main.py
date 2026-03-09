@@ -41,9 +41,25 @@ HF_TOKEN = os.getenv("HF_TOKEN", "").strip()
 
 app = FastAPI()
 
+allowed_origins = {
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "https://qsearch-faez.vercel.app",
+}
+
+# Optional: add comma-separated origins via env, e.g.
+# CORS_ORIGINS=https://your-vercel-domain.vercel.app,https://app.example.com
+extra_cors_origins = os.getenv("CORS_ORIGINS", "").strip()
+if extra_cors_origins:
+    for origin in extra_cors_origins.split(","):
+        cleaned = origin.strip()
+        if cleaned:
+            allowed_origins.add(cleaned)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=sorted(allowed_origins),
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
