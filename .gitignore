@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+.venv/
+venv/
+
+# Environment variables
+.env
+
+# Python cache files
+*.pkl
+
+# Local dataset (stored in HuggingFace instead)
+QnA/
+Udvash/
+
+# Model cache
+.cache/
+*.pt
+
+# Node modules
+node_modules/
+
+# Build files
+dist/
+build/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE settings
+.vscode/
+.idea/
