@@ -1,4 +1,3 @@
-cat > .gitignore << 'EOF'
 # Python
 .venv/
 venv/
@@ -8,7 +7,6 @@ __pycache__/
 # Backend local artifacts
 backend/.venv/
 backend/__pycache__/
-backend/embeddings_cache.pkl
 backend/.hf_models/
 
 # Frontend
@@ -24,4 +22,3 @@ qsearch-media/
 .DS_Store
 Thumbs.db
 .vscode/
-EOF

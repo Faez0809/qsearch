@@ -37,6 +37,7 @@ else:
 MODEL_CACHE_DIR = os.getenv("HF_MODEL_CACHE", "/tmp/hf_models")
 HF_BASE_URL = "https://huggingface.co/datasets/Faez0809/qsearch-media/resolve/main/"
 HF_API_BASE = "https://huggingface.co/api/datasets/Faez0809/qsearch-media/tree/main/"
+HF_TOKEN = os.getenv("HF_TOKEN", "").strip()
 
 app = FastAPI()
 
@@ -181,10 +182,16 @@ def build_media_url(folder: str, filename: str) -> str:
 def get_hf_files(folder: str) -> list[str]:
     files: list[str] = []
     cursor = None
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else None
     try:
         while True:
             params = {"cursor": cursor} if cursor else None
-            response = requests.get(HF_API_BASE + folder, params=params, timeout=20)
+            response = requests.get(
+                HF_API_BASE + folder,
+                params=params,
+                headers=headers,
+                timeout=20,
+            )
             if response.status_code != 200:
                 return files
             data = response.json()
