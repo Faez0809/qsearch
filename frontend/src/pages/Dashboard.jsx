@@ -42,10 +42,17 @@ function Dashboard() {
   useEffect(() => {
     const abortController = new AbortController()
     let keepPolling = true
+    let inFlight = false
 
-    const checkBackendHealth = async () => {
+    const checkBackendHealth = async (markChecking = false) => {
+      if (inFlight) {
+        return
+      }
+      inFlight = true
       const maxAttempts = 12
-      setBackendStatus('checking')
+      if (markChecking) {
+        setBackendStatus('checking')
+      }
 
       for (let attempt = 1; attempt <= maxAttempts && keepPolling; attempt += 1) {
         try {
@@ -54,22 +61,25 @@ function Dashboard() {
           })
 
           setBackendStatus('connected')
+          inFlight = false
           return
         } catch {
           if (attempt === maxAttempts) {
             setBackendStatus('offline')
+            inFlight = false
             return
           }
           // Render free tier can cold-start slowly, especially on mobile networks.
           await new Promise((resolve) => setTimeout(resolve, 5000))
         }
       }
+      inFlight = false
     }
 
-    checkBackendHealth()
+    checkBackendHealth(true)
 
     const intervalId = setInterval(() => {
-      if (keepPolling && backendStatus !== 'connected') {
+      if (keepPolling) {
         checkBackendHealth()
       }
     }, 30000)
@@ -79,7 +89,7 @@ function Dashboard() {
       clearInterval(intervalId)
       abortController.abort()
     }
-  }, [backendStatus])
+  }, [])
 
   const handleSearch = async () => {
     const trimmedQuery = query.trim()
