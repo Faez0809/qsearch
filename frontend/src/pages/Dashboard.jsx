@@ -18,11 +18,13 @@ function Dashboard() {
 
   useEffect(() => {
     const abortController = new AbortController()
+    let keepPolling = true
 
     const checkBackendHealth = async () => {
-      const maxAttempts = 4
+      const maxAttempts = 12
+      setBackendStatus('checking')
 
-      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      for (let attempt = 1; attempt <= maxAttempts && keepPolling; attempt += 1) {
         try {
           const response = await fetch(`${API_BASE}/health`, {
             signal: abortController.signal,
@@ -39,17 +41,26 @@ function Dashboard() {
             setBackendStatus('offline')
             return
           }
-          await new Promise((resolve) => setTimeout(resolve, 2000))
+          // Render free tier can cold-start slowly, especially on mobile networks.
+          await new Promise((resolve) => setTimeout(resolve, 5000))
         }
       }
     }
 
     checkBackendHealth()
 
+    const intervalId = setInterval(() => {
+      if (keepPolling && backendStatus !== 'connected') {
+        checkBackendHealth()
+      }
+    }, 30000)
+
     return () => {
+      keepPolling = false
+      clearInterval(intervalId)
       abortController.abort()
     }
-  }, [])
+  }, [backendStatus])
 
   const handleSearch = async () => {
     const trimmedQuery = query.trim()
@@ -91,7 +102,7 @@ function Dashboard() {
       <div className="dashboard-panel">
         <p className="backend-status-message status-message-fade-in" role="status" aria-live="polite">
           {backendStatus === 'checking'
-            ? 'Checking backend connection...'
+            ? 'Checking backend connection (waking up server if needed)...'
             : backendStatus === 'connected'
               ? 'Backend connected'
               : 'Backend offline'}
