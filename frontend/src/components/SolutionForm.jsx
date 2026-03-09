@@ -1,3 +1,4 @@
+import React from 'react'
 import { useState } from 'react'
 
 function SolutionForm({ onAdd }) {
@@ -52,3 +53,4 @@ function SolutionForm({ onAdd }) {
 }
 
 export default SolutionForm
+

@@ -1,41 +1,27 @@
+cat > .gitignore << 'EOF'
 # Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-
-# Virtual environment
 .venv/
 venv/
+__pycache__/
+*.pyc
 
-# Environment variables
-.env
+# Backend local artifacts
+backend/.venv/
+backend/__pycache__/
+backend/embeddings_cache.pkl
+backend/.hf_models/
 
-# Python cache files
-*.pkl
+# Frontend
+frontend/node_modules/
+frontend/dist/
 
-# Local dataset (stored in HuggingFace instead)
+# Local datasets / media
 QnA/
 Udvash/
+qsearch-media/
 
-# Model cache
-.cache/
-*.pt
-
-# Node modules
-node_modules/
-
-# Build files
-dist/
-build/
-
-# Logs
-*.log
-
-# OS files
+# OS/editor
 .DS_Store
 Thumbs.db
-
-# IDE settings
 .vscode/
-.idea/
+EOF

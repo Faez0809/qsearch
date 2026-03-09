@@ -1,3 +1,4 @@
+import React from 'react'
 function SearchBox({
   query,
   onQueryChange,
@@ -42,3 +43,4 @@ function SearchBox({
 }
 
 export default SearchBox
+

@@ -1,3 +1,4 @@
+import React from 'react'
 function Header({ currentPage, onNavigate, theme, onToggleTheme }) {
   return (
     <header className="app-header">
@@ -32,3 +33,4 @@ function Header({ currentPage, onNavigate, theme, onToggleTheme }) {
 }
 
 export default Header
+

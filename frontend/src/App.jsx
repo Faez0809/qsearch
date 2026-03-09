@@ -1,3 +1,4 @@
+import React from 'react'
 import { useEffect, useState } from 'react'
 import Dashboard from './pages/Dashboard'
 import SolutionManager from './pages/SolutionManager'
@@ -45,3 +46,4 @@ function App() {
 }
 
 export default App
+

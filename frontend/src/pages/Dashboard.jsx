@@ -1,3 +1,4 @@
+import React from 'react'
 import { useEffect, useState } from 'react'
 import SearchBox from '../components/SearchBox'
 import ResultCard from '../components/ResultCard'
@@ -114,3 +115,4 @@ function Dashboard() {
 }
 
 export default Dashboard
+

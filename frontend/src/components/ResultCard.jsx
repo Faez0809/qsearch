@@ -1,3 +1,4 @@
+import React from 'react'
 function toAbsoluteUrl(path, apiBase) {
   if (!path) {
     return null
@@ -41,3 +42,4 @@ function ResultCard({ result, apiBase }) {
 }
 
 export default ResultCard
+
