@@ -26,7 +26,7 @@ AUDIO_DIR = PROJECT_ROOT / "Udvash"
 CACHE_FILE = BASE_DIR / "embeddings_cache.pkl"
 SOLUTIONS_FILE = BASE_DIR / "solutions.json"
 
-EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L6-v2"
 
 # -----------------------
 # Remote dataset config
