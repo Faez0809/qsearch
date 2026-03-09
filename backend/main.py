@@ -58,9 +58,9 @@ if extra_cors_origins:
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=sorted(allowed_origins),
+    allow_origins=["*"] if REMOTE_DATA else sorted(allowed_origins),
     allow_origin_regex=r"https://.*\.vercel\.app",
-    allow_credentials=True,
+    allow_credentials=False if REMOTE_DATA else True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
