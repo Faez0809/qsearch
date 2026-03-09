@@ -34,6 +34,13 @@ if REMOTE_DATA:
 else:
     EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
+EMBEDDINGS_ENABLED = (
+    os.getenv("EMBEDDINGS_ENABLED", "false" if REMOTE_DATA else "true")
+    .strip()
+    .lower()
+    == "true"
+)
+
 MODEL_CACHE_DIR = os.getenv("HF_MODEL_CACHE", "/tmp/hf_models")
 HF_BASE_URL = "https://huggingface.co/datasets/Faez0809/qsearch-media/resolve/main/"
 HF_API_BASE = "https://huggingface.co/api/datasets/Faez0809/qsearch-media/tree/main/"
@@ -166,6 +173,8 @@ def phrase_bonus(query: str, document: str) -> float:
 
 def get_embedding_model() -> Any:
     global embedding_model, model_ready
+    if not EMBEDDINGS_ENABLED:
+        raise RuntimeError("Embeddings disabled in current environment")
     if embedding_model is None:
         from sentence_transformers import SentenceTransformer
 
@@ -179,6 +188,8 @@ def get_embedding_model() -> Any:
 
 
 def generate_embedding(text: str) -> list[float]:
+    if not EMBEDDINGS_ENABLED:
+        return []
     return get_embedding_model().encode(text).tolist()
 
 
@@ -317,20 +328,20 @@ def scan_media() -> int:
             if existing.get("audio_path") != audio_path:
                 existing["audio_path"] = audio_path
                 cache_needs_save = True
-            if "embedding" not in existing:
+            if EMBEDDINGS_ENABLED and "embedding" not in existing:
                 existing["embedding"] = generate_embedding(text)
                 cache_needs_save = True
             continue
 
-        media_index.append(
-            {
-                "base_name": base,
-                "text": text,
-                "image_path": image_path,
-                "audio_path": audio_path,
-                "embedding": generate_embedding(text),
-            }
-        )
+        item = {
+            "base_name": base,
+            "text": text,
+            "image_path": image_path,
+            "audio_path": audio_path,
+        }
+        if EMBEDDINGS_ENABLED:
+            item["embedding"] = generate_embedding(text)
+        media_index.append(item)
         indexed_basenames.add(base)
         new_items += 1
 
@@ -380,7 +391,8 @@ def initialize_search_state() -> None:
                 print(f"Initialization complete from cache. Indexed items: {len(media_index)}")
                 return
 
-            get_embedding_model()
+            if EMBEDDINGS_ENABLED:
+                get_embedding_model()
             new_items = scan_media()
             load_solutions()
 
@@ -405,6 +417,8 @@ def _background_warmup() -> None:
 
 
 def _background_model_warmup() -> None:
+    if not EMBEDDINGS_ENABLED:
+        return
     try:
         get_embedding_model()
         print("Embedding model warmup complete")
@@ -427,7 +441,8 @@ def startup() -> None:
     print(f"Embedding model: {EMBEDDING_MODEL_NAME}")
     load_solutions()
     threading.Thread(target=_background_warmup, daemon=True).start()
-    start_model_warmup_once()
+    if EMBEDDINGS_ENABLED:
+        start_model_warmup_once()
     print("Application startup complete")
     print("Background warmup started")
 
@@ -444,6 +459,8 @@ def ready() -> dict[str, Any]:
         "error": init_error,
         "indexed_items": len(media_index),
         "mode": DATA_SOURCE,
+        "embeddings_enabled": EMBEDDINGS_ENABLED,
+        "model_ready": model_ready,
     }
 
 
@@ -458,7 +475,8 @@ def search(payload: SearchRequest) -> list[SearchResult]:
                 init_error = None
 
         if not media_index:
-            start_model_warmup_once()
+            if EMBEDDINGS_ENABLED:
+                start_model_warmup_once()
             threading.Thread(target=_background_warmup, daemon=True).start()
             raise HTTPException(
                 status_code=503,
@@ -470,12 +488,12 @@ def search(payload: SearchRequest) -> list[SearchResult]:
 
     query = normalize_text(payload.query)
     query_embedding: list[float] | None = None
-    if model_ready:
+    if EMBEDDINGS_ENABLED and model_ready:
         try:
             query_embedding = generate_embedding(query)
         except Exception:
             query_embedding = None
-    else:
+    elif EMBEDDINGS_ENABLED:
         start_model_warmup_once()
     results: list[SearchResult] = []
 
