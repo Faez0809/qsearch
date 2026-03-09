@@ -350,8 +350,17 @@ def initialize_search_state() -> None:
             return
 
         try:
-            get_embedding_model()
             loaded_cache = load_cache()
+            # Fast path: if a cache for this data source already exists, mark ready
+            # immediately and defer heavy model load until first search request.
+            if loaded_cache and media_index and not cache_needs_save:
+                is_initialized = True
+                init_error = None
+                load_solutions()
+                print(f"Initialization complete from cache. Indexed items: {len(media_index)}")
+                return
+
+            get_embedding_model()
             new_items = scan_media()
             load_solutions()
 
