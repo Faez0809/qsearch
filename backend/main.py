@@ -449,13 +449,20 @@ def ready() -> dict[str, Any]:
 
 @app.post("/search", response_model=list[SearchResult])
 def search(payload: SearchRequest) -> list[SearchResult]:
+    global is_initialized, init_error
     if not is_initialized:
-        try:
-            initialize_search_state()
-        except Exception:
+        if not media_index:
+            load_cache()
+            if media_index:
+                is_initialized = True
+                init_error = None
+
+        if not media_index:
+            start_model_warmup_once()
+            threading.Thread(target=_background_warmup, daemon=True).start()
             raise HTTPException(
                 status_code=503,
-                detail="Search is initializing. Please try again in a few seconds.",
+                detail="Backend is warming up. Please retry in 20-60 seconds.",
             )
 
     if not media_index:

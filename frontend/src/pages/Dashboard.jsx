@@ -16,6 +16,7 @@ const fetchWithRetry = async (path, options = {}, retries = 4, waitMs = 3000) =>
   const timeoutMs = options.timeoutMs ?? 25000
   const requestOptions = { ...options }
   delete requestOptions.timeoutMs
+  let lastResponse = null
 
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     const controller = new AbortController()
@@ -29,6 +30,11 @@ const fetchWithRetry = async (path, options = {}, retries = 4, waitMs = 3000) =>
         clearTimeout(timeoutId)
         return response
       }
+      lastResponse = response
+      if (response.status < 500 && response.status !== 429) {
+        clearTimeout(timeoutId)
+        return response
+      }
     } catch {
       // Retry on transient network or cold-start issues.
     } finally {
@@ -37,6 +43,9 @@ const fetchWithRetry = async (path, options = {}, retries = 4, waitMs = 3000) =>
     if (attempt < retries) {
       await sleep(waitMs)
     }
+  }
+  if (lastResponse) {
+    return lastResponse
   }
   throw new Error('Backend request failed after retries')
 }
@@ -110,6 +119,19 @@ function Dashboard() {
         body: JSON.stringify({ query: trimmedQuery }),
         timeoutMs: 20000,
       }, 3, 2000)
+
+      if (!response.ok) {
+        let detail = ''
+        try {
+          const payload = await response.json()
+          detail = payload?.detail ? String(payload.detail) : ''
+        } catch {
+          detail = ''
+        }
+        setValidationMessage(detail || 'Unable to search right now. Please try again.')
+        setResults([])
+        return
+      }
 
       const data = await response.json()
       setBackendStatus('connected')
