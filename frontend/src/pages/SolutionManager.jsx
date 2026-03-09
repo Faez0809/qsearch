@@ -3,33 +3,29 @@ import { useEffect, useState } from 'react'
 import SolutionForm from '../components/SolutionForm'
 import SolutionList from '../components/SolutionList'
 
-const PRIMARY_API_BASE =
+const API_BASE =
   import.meta.env.VITE_API_BASE ||
   (import.meta.env.PROD
-    ? '/api'
+    ? 'https://qsearch-9ejl.onrender.com'
     : 'http://127.0.0.1:8000')
-const RENDER_API_BASE = 'https://qsearch-9ejl.onrender.com'
-const API_BASES = import.meta.env.PROD
-  ? [PRIMARY_API_BASE, RENDER_API_BASE]
-  : [PRIMARY_API_BASE]
+const buildUrl = (path) => `${API_BASE}${path.startsWith('/') ? '' : '/'}${path}`
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-const buildUrl = (base, path) =>
-  `${base}${path.startsWith('/') ? '' : '/'}${path}`
-
-const fetchWithFallback = async (path, options) => {
-  const uniqueBases = [...new Set(API_BASES)]
-
-  for (const base of uniqueBases) {
+const fetchWithRetry = async (path, options = {}, retries = 4, waitMs = 2000) => {
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
     try {
-      const response = await fetch(buildUrl(base, path), options)
+      const response = await fetch(buildUrl(path), options)
       if (response.ok) {
         return response
       }
     } catch {
-      // Try next backend target.
+      // Retry on transient network or cold-start issues.
+    }
+    if (attempt < retries) {
+      await sleep(waitMs)
     }
   }
-  throw new Error('All backend targets failed')
+  throw new Error('Backend request failed after retries')
 }
 
 function SolutionManager() {
@@ -38,7 +34,7 @@ function SolutionManager() {
   useEffect(() => {
     const fetchSolutions = async () => {
       try {
-        const response = await fetchWithFallback('/solutions')
+        const response = await fetchWithRetry('/solutions')
         const data = await response.json()
         setSolutions(Array.isArray(data) ? data : [])
       } catch (error) {
@@ -51,7 +47,7 @@ function SolutionManager() {
 
   const addSolution = async (newSolution) => {
     try {
-      const response = await fetchWithFallback('/solutions', {
+      const response = await fetchWithRetry('/solutions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -68,7 +64,7 @@ function SolutionManager() {
 
   const deleteSolution = async (id) => {
     try {
-      await fetchWithFallback(`/solutions/${id}`, {
+      await fetchWithRetry(`/solutions/${id}`, {
         method: 'DELETE',
       })
 
