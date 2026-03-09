@@ -4,6 +4,7 @@ import os
 import pickle
 import re
 import threading
+import math
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
@@ -13,8 +14,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
 
 from routes.health import router as health_router
 
@@ -81,7 +80,7 @@ class Solution(SolutionIn):
 
 media_index: list[dict[str, Any]] = []
 indexed_basenames: set[str] = set()
-embedding_model: SentenceTransformer | None = None
+embedding_model: Any | None = None
 cache_needs_save = False
 solutions: list[dict[str, Any]] = []
 init_lock = threading.Lock()
@@ -145,9 +144,11 @@ def phrase_bonus(query: str, document: str) -> float:
     return 1.0 if normalize_text(query) in normalize_text(document) else 0.0
 
 
-def get_embedding_model() -> SentenceTransformer:
+def get_embedding_model() -> Any:
     global embedding_model
     if embedding_model is None:
+        from sentence_transformers import SentenceTransformer
+
         Path(MODEL_CACHE_DIR).mkdir(parents=True, exist_ok=True)
         embedding_model = SentenceTransformer(
             EMBEDDING_MODEL_NAME,
@@ -158,6 +159,17 @@ def get_embedding_model() -> SentenceTransformer:
 
 def generate_embedding(text: str) -> list[float]:
     return get_embedding_model().encode(text).tolist()
+
+
+def cosine_sim(a: list[float], b: list[float]) -> float:
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    return dot / (norm_a * norm_b)
 
 
 def build_media_url(folder: str, filename: str) -> str:
@@ -401,7 +413,7 @@ def search(payload: SearchRequest) -> list[SearchResult]:
 
     for item in media_index:
         doc_text = item["text"]
-        cosine = float(cosine_similarity([query_embedding], [item["embedding"]])[0][0])
+        cosine = float(cosine_sim(query_embedding, item["embedding"]))
         fuzzy_score = fuzzy_token_match_score(query, doc_text)
         number_score = numeric_match_bonus(query, doc_text)
         p_bonus = phrase_bonus(query, doc_text)
