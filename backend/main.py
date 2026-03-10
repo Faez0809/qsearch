@@ -141,6 +141,15 @@ def tokenize(text: str) -> list[str]:
     return [token for token in normalize_text(text).split() if len(token) >= 2]
 
 
+def precompute_item_features(item: dict[str, Any]) -> None:
+    text = item.get("text", "")
+    if not isinstance(text, str):
+        text = str(text)
+        item["text"] = text
+    item["tokens"] = [token for token in text.split() if len(token) >= 2]
+    item["numbers"] = set(re.findall(r"\d+", text))
+
+
 def fuzzy_token_match_score(query: str, document: str) -> float:
     query_tokens = tokenize(query)
     doc_tokens = tokenize(document)
@@ -170,6 +179,38 @@ def numeric_match_bonus(query: str, document: str) -> float:
 
 def phrase_bonus(query: str, document: str) -> float:
     return 1.0 if normalize_text(query) in normalize_text(document) else 0.0
+
+
+def ensure_media_fallback_links() -> None:
+    global cache_needs_save
+    image_by_text: dict[str, str] = {}
+    audio_by_text: dict[str, str] = {}
+
+    for item in media_index:
+        if not isinstance(item, dict):
+            continue
+        key = item.get("text")
+        if not isinstance(key, str) or not key:
+            continue
+        image_path = item.get("image_path")
+        audio_path = item.get("audio_path")
+        if isinstance(image_path, str) and image_path:
+            image_by_text.setdefault(key, image_path)
+        if isinstance(audio_path, str) and audio_path:
+            audio_by_text.setdefault(key, audio_path)
+
+    for item in media_index:
+        if not isinstance(item, dict):
+            continue
+        key = item.get("text")
+        if not isinstance(key, str) or not key:
+            continue
+        if not item.get("image_path") and key in image_by_text:
+            item["image_path"] = image_by_text[key]
+            cache_needs_save = True
+        if not item.get("audio_path") and key in audio_by_text:
+            item["audio_path"] = audio_by_text[key]
+            cache_needs_save = True
 
 
 def get_embedding_model() -> Any:
@@ -273,6 +314,10 @@ def load_cache() -> bool:
             for item in media_index
             if isinstance(item, dict) and "base_name" in item
         }
+        for item in media_index:
+            if isinstance(item, dict):
+                precompute_item_features(item)
+        ensure_media_fallback_links()
         cache_needs_save = cache_data_source != DATA_SOURCE
         return True
     except Exception:
@@ -326,6 +371,7 @@ def scan_media() -> int:
         if existing:
             if existing.get("text") != text:
                 existing["text"] = text
+                precompute_item_features(existing)
                 cache_needs_save = True
             if image_path is not None and existing.get("image_path") != image_path:
                 existing["image_path"] = image_path
@@ -346,10 +392,12 @@ def scan_media() -> int:
         }
         if EMBEDDINGS_ENABLED:
             item["embedding"] = generate_embedding(text)
+        precompute_item_features(item)
         media_index.append(item)
         indexed_basenames.add(base)
         new_items += 1
 
+    ensure_media_fallback_links()
     return new_items
 
 
@@ -496,6 +544,8 @@ def run_search(query_text: str) -> list[SearchResult]:
         return []
 
     query = normalize_text(query_text)
+    query_tokens = [token for token in query.split() if len(token) >= 2]
+    query_numbers = set(re.findall(r"\d+", query))
     query_embedding: list[float] | None = None
     if EMBEDDINGS_ENABLED and model_ready:
         try:
@@ -511,9 +561,27 @@ def run_search(query_text: str) -> list[SearchResult]:
         cosine = 0.0
         if query_embedding is not None and "embedding" in item:
             cosine = float(cosine_sim(query_embedding, item["embedding"]))
-        fuzzy_score = fuzzy_token_match_score(query, doc_text)
-        number_score = numeric_match_bonus(query, doc_text)
-        p_bonus = phrase_bonus(query, doc_text)
+        doc_tokens = item.get("tokens", [])
+        doc_numbers = item.get("numbers", set())
+
+        fuzzy_score = 0.0
+        if query_tokens:
+            matched = 0
+            for query_token in query_tokens:
+                for doc_token in doc_tokens:
+                    ratio = difflib.SequenceMatcher(None, query_token, doc_token).ratio()
+                    if ratio >= 0.75:
+                        matched += 1
+                        break
+            fuzzy_score = matched / len(query_tokens)
+
+        number_score = 0.0
+        if query_numbers:
+            matched_nums = query_numbers & doc_numbers
+            if matched_nums:
+                number_score = len(matched_nums) / len(query_numbers)
+
+        p_bonus = 1.0 if query in doc_text else 0.0
 
         final = (
             (0.15 * cosine)
