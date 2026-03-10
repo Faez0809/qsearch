@@ -114,6 +114,8 @@ solutions: list[dict[str, Any]] = []
 init_lock = threading.Lock()
 is_initialized = False
 init_error: str | None = None
+query_result_cache: dict[str, list[SearchResult]] = {}
+QUERY_CACHE_MAX = 300
 
 
 def normalize_text(text: str) -> str:
@@ -146,7 +148,9 @@ def precompute_item_features(item: dict[str, Any]) -> None:
     if not isinstance(text, str):
         text = str(text)
         item["text"] = text
-    item["tokens"] = [token for token in text.split() if len(token) >= 2]
+    tokens = [token for token in text.split() if len(token) >= 2]
+    item["tokens"] = tokens
+    item["token_set"] = set(tokens)
     item["numbers"] = set(re.findall(r"\d+", text))
 
 
@@ -254,11 +258,34 @@ def build_media_url(folder: str, filename: str) -> str:
 
 def get_hf_files(folder: str) -> list[str]:
     files: list[str] = []
+    # Prefer huggingface_hub listing because it handles pagination reliably.
+    try:
+        from huggingface_hub import list_repo_files
+
+        prefix = folder + "/"
+        repo_files = list_repo_files(
+            "Faez0809/qsearch-media",
+            repo_type="dataset",
+            token=HF_TOKEN or None,
+        )
+        for path in repo_files:
+            if not isinstance(path, str) or not path.startswith(prefix):
+                continue
+            filename = path[len(prefix) :]
+            if filename and "/" not in filename:
+                files.append(filename)
+        if files:
+            return sorted(set(files))
+    except Exception:
+        pass
+
+    # Fallback: HF tree API with cursor pagination.
     cursor = None
     headers = {"Authorization": f"Bearer {HF_TOKEN}"} if HF_TOKEN else None
+    seen_cursors: set[str] = set()
     try:
         while True:
-            params = {"cursor": cursor} if cursor else None
+            params = {"cursor": cursor, "limit": 1000} if cursor else {"limit": 1000}
             response = None
             for _ in range(3):
                 response = requests.get(
@@ -269,20 +296,28 @@ def get_hf_files(folder: str) -> list[str]:
                 )
                 if response.status_code == 200:
                     break
-            if response.status_code != 200:
-                return files
+            if response is None or response.status_code != 200:
+                return sorted(set(files))
             data = response.json()
             if not isinstance(data, list) or not data:
-                return files
+                return sorted(set(files))
             for item in data:
                 if item.get("type") == "file":
-                    files.append(item["path"].split("/")[-1])
+                    path = item.get("path", "")
+                    if isinstance(path, str) and path:
+                        files.append(path.split("/")[-1])
             next_cursor = data[-1].get("oid")
-            if not next_cursor or next_cursor == cursor:
-                return files
+            if (
+                not isinstance(next_cursor, str)
+                or not next_cursor
+                or next_cursor == cursor
+                or next_cursor in seen_cursors
+            ):
+                return sorted(set(files))
+            seen_cursors.add(next_cursor)
             cursor = next_cursor
     except Exception:
-        return files
+        return sorted(set(files))
 
 
 def save_cache() -> None:
@@ -292,7 +327,7 @@ def save_cache() -> None:
 
 
 def load_cache() -> bool:
-    global media_index, indexed_basenames, cache_needs_save
+    global media_index, indexed_basenames, cache_needs_save, query_result_cache
     if not CACHE_FILE.exists():
         return False
 
@@ -318,6 +353,7 @@ def load_cache() -> bool:
             if isinstance(item, dict):
                 precompute_item_features(item)
         ensure_media_fallback_links()
+        query_result_cache.clear()
         cache_needs_save = cache_data_source != DATA_SOURCE
         return True
     except Exception:
@@ -327,39 +363,58 @@ def load_cache() -> bool:
 
 
 def scan_media() -> int:
-    global cache_needs_save
+    global cache_needs_save, query_result_cache
+    query_result_cache.clear()
 
     image_map: dict[str, str] = {}
     audio_map: dict[str, str] = {}
+    image_norm_map: dict[str, str] = {}
+    audio_norm_map: dict[str, str] = {}
+    label_norm_map: dict[str, str] = {}
+
+    def add_media_file(
+        filename: str,
+        folder: str,
+        url_map: dict[str, str],
+        norm_map: dict[str, str],
+    ) -> None:
+        base, _ = os.path.splitext(filename)
+        url = build_media_url(folder, filename)
+        url_map[base] = url
+        norm = normalize_text(base)
+        if norm and norm not in norm_map:
+            norm_map[norm] = url
+        if norm and norm not in label_norm_map:
+            label_norm_map[norm] = base
 
     if REMOTE_DATA:
         image_files = get_hf_files("QnA")
         audio_files = get_hf_files("Udvash")
         for filename in image_files:
-            base, _ = os.path.splitext(filename)
-            image_map[base] = build_media_url("QnA", filename)
+            add_media_file(filename, "QnA", image_map, image_norm_map)
         for filename in audio_files:
-            base, _ = os.path.splitext(filename)
-            audio_map[base] = build_media_url("Udvash", filename)
+            add_media_file(filename, "Udvash", audio_map, audio_norm_map)
     else:
         if IMAGE_DIR.is_dir():
             for filename in os.listdir(IMAGE_DIR):
                 path = IMAGE_DIR / filename
                 if path.is_file():
-                    base, _ = os.path.splitext(filename)
-                    image_map[base] = build_media_url("qna", filename)
+                    add_media_file(filename, "qna", image_map, image_norm_map)
 
         if AUDIO_DIR.is_dir():
             for filename in os.listdir(AUDIO_DIR):
                 path = AUDIO_DIR / filename
                 if path.is_file():
-                    base, _ = os.path.splitext(filename)
-                    audio_map[base] = build_media_url("udvash", filename)
+                    add_media_file(filename, "udvash", audio_map, audio_norm_map)
 
     new_items = 0
     all_bases = set(image_map) | set(audio_map)
+    all_norm_bases = set(image_norm_map) | set(audio_norm_map)
     by_base = {
-        item.get("base_name"): item for item in media_index if isinstance(item, dict)
+        item.get("base_name"): item for item in media_index if isinstance(item, dict) and item.get("base_name")
+    }
+    by_norm_text = {
+        item.get("text"): item for item in media_index if isinstance(item, dict) and item.get("text")
     }
 
     for base in sorted(all_bases):
@@ -395,6 +450,37 @@ def scan_media() -> int:
         precompute_item_features(item)
         media_index.append(item)
         indexed_basenames.add(base)
+        new_items += 1
+
+    # Second pass: pair image/audio by normalized base so small naming differences
+    # (punctuation/case/script variants) still map to the same search item.
+    for norm_base in sorted(all_norm_bases):
+        existing = by_norm_text.get(norm_base)
+        image_path = image_norm_map.get(norm_base)
+        audio_path = audio_norm_map.get(norm_base)
+        base_label = label_norm_map.get(norm_base, norm_base)
+
+        if existing:
+            if image_path is not None and existing.get("image_path") != image_path:
+                existing["image_path"] = image_path
+                cache_needs_save = True
+            if audio_path is not None and existing.get("audio_path") != audio_path:
+                existing["audio_path"] = audio_path
+                cache_needs_save = True
+            continue
+
+        item = {
+            "base_name": base_label,
+            "text": norm_base,
+            "image_path": image_path,
+            "audio_path": audio_path,
+        }
+        if EMBEDDINGS_ENABLED:
+            item["embedding"] = generate_embedding(norm_base)
+        precompute_item_features(item)
+        media_index.append(item)
+        indexed_basenames.add(base_label)
+        by_norm_text[norm_base] = item
         new_items += 1
 
     ensure_media_fallback_links()
@@ -544,7 +630,11 @@ def run_search(query_text: str) -> list[SearchResult]:
         return []
 
     query = normalize_text(query_text)
+    if query in query_result_cache:
+        return query_result_cache[query]
+
     query_tokens = [token for token in query.split() if len(token) >= 2]
+    query_token_set = set(query_tokens)
     query_numbers = set(re.findall(r"\d+", query))
     query_embedding: list[float] | None = None
     if EMBEDDINGS_ENABLED and model_ready:
@@ -554,9 +644,23 @@ def run_search(query_text: str) -> list[SearchResult]:
             query_embedding = None
     elif EMBEDDINGS_ENABLED:
         start_model_warmup_once()
+    candidates = media_index
+    if query_tokens or query_numbers:
+        scored_candidates: list[tuple[int, dict[str, Any]]] = []
+        for item in media_index:
+            token_overlap = len(query_token_set & item.get("token_set", set()))
+            number_overlap = len(query_numbers & item.get("numbers", set()))
+            coarse = token_overlap + (2 * number_overlap)
+            if coarse > 0:
+                scored_candidates.append((coarse, item))
+
+        if scored_candidates:
+            scored_candidates.sort(key=lambda x: x[0], reverse=True)
+            candidates = [item for _, item in scored_candidates[:600]]
+
     results: list[SearchResult] = []
 
-    for item in media_index:
+    for item in candidates:
         doc_text = item["text"]
         cosine = 0.0
         if query_embedding is not None and "embedding" in item:
@@ -569,6 +673,9 @@ def run_search(query_text: str) -> list[SearchResult]:
             matched = 0
             for query_token in query_tokens:
                 for doc_token in doc_tokens:
+                    if query_token == doc_token or query_token in doc_token or doc_token in query_token:
+                        matched += 1
+                        break
                     ratio = difflib.SequenceMatcher(None, query_token, doc_token).ratio()
                     if ratio >= 0.75:
                         matched += 1
@@ -601,7 +708,12 @@ def run_search(query_text: str) -> list[SearchResult]:
         )
 
     results.sort(key=lambda result: result.similarity, reverse=True)
-    return results[:3]
+    top_results = results[:3]
+    query_result_cache[query] = top_results
+    if len(query_result_cache) > QUERY_CACHE_MAX:
+        oldest_key = next(iter(query_result_cache))
+        query_result_cache.pop(oldest_key, None)
+    return top_results
 
 
 @app.get("/search", response_model=list[SearchResult])
