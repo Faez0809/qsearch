@@ -1,6 +1,9 @@
 .app-shell {
   min-height: 100vh;
-  background-color: var(--bg);
+  background:
+    radial-gradient(1200px 500px at 15% -20%, color-mix(in srgb, var(--primary), transparent 88%), transparent),
+    radial-gradient(1200px 500px at 85% -20%, color-mix(in srgb, var(--primary), transparent 92%), transparent),
+    var(--bg);
   color: var(--text-primary);
 }
 
@@ -51,6 +54,7 @@
   font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
 }
 
 .nav-button,
@@ -90,6 +94,7 @@
   border: 1px solid var(--border-color);
   border-radius: 14px;
   box-shadow: var(--shadow);
+  transition: transform 0.22s ease, box-shadow 0.22s ease;
 }
 
 .content-card {
@@ -138,10 +143,18 @@
   font: inherit;
   color: var(--text-primary);
   background-color: var(--card-bg);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
 }
 
 .search-textarea {
   resize: vertical;
+}
+
+.search-textarea:focus,
+.file-upload-field input:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--primary), #ffffff 50%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary), transparent 82%);
 }
 
 .file-upload-field {
@@ -276,6 +289,10 @@
   border-radius: 8px;
   border: 1px solid var(--border-color);
   background-color: var(--bg);
+}
+
+.backend-status-message strong {
+  color: var(--text-primary);
 }
 
 .result-audio {

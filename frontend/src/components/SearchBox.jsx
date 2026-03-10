@@ -15,6 +15,12 @@ function SearchBox({
         placeholder="Describe the question or paste exam text here..."
         value={query}
         onChange={(event) => onQueryChange(event.target.value)}
+        onKeyDown={(event) => {
+          if ((event.ctrlKey || event.metaKey) && event.key === 'Enter' && !isLoading) {
+            event.preventDefault()
+            onSearch()
+          }
+        }}
         aria-invalid={Boolean(validationMessage)}
         aria-describedby={validationMessage ? 'search-validation-message' : undefined}
       />

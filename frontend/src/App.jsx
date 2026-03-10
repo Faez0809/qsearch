@@ -11,6 +11,7 @@ function App() {
   const [theme, setTheme] = useState('light')
 
   useEffect(() => {
+    document.title = 'qsearch'
     const savedTheme = localStorage.getItem('theme')
     if (savedTheme === 'dark') {
       setTheme('dark')
