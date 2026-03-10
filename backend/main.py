@@ -218,12 +218,16 @@ def get_hf_files(folder: str) -> list[str]:
     try:
         while True:
             params = {"cursor": cursor} if cursor else None
-            response = requests.get(
-                HF_API_BASE + folder,
-                params=params,
-                headers=headers,
-                timeout=20,
-            )
+            response = None
+            for _ in range(3):
+                response = requests.get(
+                    HF_API_BASE + folder,
+                    params=params,
+                    headers=headers,
+                    timeout=20,
+                )
+                if response.status_code == 200:
+                    break
             if response.status_code != 200:
                 return files
             data = response.json()
@@ -323,10 +327,10 @@ def scan_media() -> int:
             if existing.get("text") != text:
                 existing["text"] = text
                 cache_needs_save = True
-            if existing.get("image_path") != image_path:
+            if image_path is not None and existing.get("image_path") != image_path:
                 existing["image_path"] = image_path
                 cache_needs_save = True
-            if existing.get("audio_path") != audio_path:
+            if audio_path is not None and existing.get("audio_path") != audio_path:
                 existing["audio_path"] = audio_path
                 cache_needs_save = True
             if EMBEDDINGS_ENABLED and "embedding" not in existing:
@@ -383,9 +387,14 @@ def initialize_search_state() -> None:
 
         try:
             loaded_cache = load_cache()
+            cache_has_missing_media = any(
+                not item.get("image_path") or not item.get("audio_path")
+                for item in media_index
+                if isinstance(item, dict)
+            )
             # Fast path: if a cache for this data source already exists, mark ready
             # immediately and defer heavy model load until first search request.
-            if loaded_cache and media_index and not cache_needs_save:
+            if loaded_cache and media_index and not cache_needs_save and not cache_has_missing_media:
                 is_initialized = True
                 init_error = None
                 load_solutions()
