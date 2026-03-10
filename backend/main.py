@@ -13,6 +13,7 @@ import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi import Query
 from pydantic import BaseModel
 
 from routes.health import router as health_router
@@ -464,8 +465,7 @@ def ready() -> dict[str, Any]:
     }
 
 
-@app.post("/search", response_model=list[SearchResult])
-def search(payload: SearchRequest) -> list[SearchResult]:
+def run_search(query_text: str) -> list[SearchResult]:
     global is_initialized, init_error
     if not is_initialized:
         if not media_index:
@@ -486,7 +486,7 @@ def search(payload: SearchRequest) -> list[SearchResult]:
     if not media_index:
         return []
 
-    query = normalize_text(payload.query)
+    query = normalize_text(query_text)
     query_embedding: list[float] | None = None
     if EMBEDDINGS_ENABLED and model_ready:
         try:
@@ -525,6 +525,16 @@ def search(payload: SearchRequest) -> list[SearchResult]:
 
     results.sort(key=lambda result: result.similarity, reverse=True)
     return results[:3]
+
+
+@app.get("/search", response_model=list[SearchResult])
+def search_get(query: str = Query(..., min_length=1)) -> list[SearchResult]:
+    return run_search(query)
+
+
+@app.post("/search", response_model=list[SearchResult])
+def search_post(payload: SearchRequest) -> list[SearchResult]:
+    return run_search(payload.query)
 
 
 @app.get("/solutions", response_model=list[Solution])

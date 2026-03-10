@@ -3,11 +3,9 @@ import { useEffect, useState } from 'react'
 import SolutionForm from '../components/SolutionForm'
 import SolutionList from '../components/SolutionList'
 
-const API_BASE =
-  import.meta.env.VITE_API_BASE ||
-  (import.meta.env.PROD
-    ? 'https://qsearch-9ejl.onrender.com'
-    : 'http://127.0.0.1:8000')
+const API_BASE = import.meta.env.PROD
+  ? 'https://qsearch-9ejl.onrender.com'
+  : 'http://127.0.0.1:8000'
 const buildUrl = (path) => `${API_BASE}${path.startsWith('/') ? '' : '/'}${path}`
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 

@@ -3,42 +3,29 @@ import { useEffect, useState } from 'react'
 import SearchBox from '../components/SearchBox'
 import ResultCard from '../components/ResultCard'
 
-const API_BASE =
-  import.meta.env.VITE_API_BASE ||
-  (import.meta.env.PROD
-    ? 'https://qsearch-9ejl.onrender.com'
-    : 'http://127.0.0.1:8000')
+const API_BASE = import.meta.env.PROD
+  ? 'https://qsearch-9ejl.onrender.com'
+  : 'http://127.0.0.1:8000'
 const buildUrl = (path) => `${API_BASE}${path.startsWith('/') ? '' : '/'}${path}`
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const fetchWithRetry = async (path, options = {}, retries = 4, waitMs = 3000) => {
-  const timeoutMs = options.timeoutMs ?? 25000
   const requestOptions = { ...options }
-  delete requestOptions.timeoutMs
   let lastResponse = null
 
   for (let attempt = 1; attempt <= retries; attempt += 1) {
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
     try {
-      const response = await fetch(buildUrl(path), {
-        ...requestOptions,
-        signal: controller.signal,
-      })
+      const response = await fetch(buildUrl(path), requestOptions)
       if (response.ok) {
-        clearTimeout(timeoutId)
         return response
       }
       lastResponse = response
       if (response.status < 500 && response.status !== 429) {
-        clearTimeout(timeoutId)
         return response
       }
     } catch {
       // Retry on transient network or cold-start issues.
-    } finally {
-      clearTimeout(timeoutId)
     }
     if (attempt < retries) {
       await sleep(waitMs)
@@ -111,14 +98,12 @@ function Dashboard() {
     setIsLoading(true)
 
     try {
-      const response = await fetchWithRetry('/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ query: trimmedQuery }),
-        timeoutMs: 20000,
-      }, 3, 2000)
+      const response = await fetchWithRetry(
+        `/search?query=${encodeURIComponent(trimmedQuery)}`,
+        { method: 'GET' },
+        4,
+        3000,
+      )
 
       if (!response.ok) {
         let detail = ''
